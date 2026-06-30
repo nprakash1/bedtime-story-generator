@@ -33,7 +33,7 @@ from classifier import classify
 from storyteller import Storyteller
 from judge import judge
 
-PASS_THRESHOLD = 4.3     # avg rubric score (out of 5) needed to ship
+PASS_THRESHOLD = 5.0     # avg rubric score (out of 5) needed to ship
 MAX_ITERATIONS = 10       # storyteller drafts before returning the best effort
 
 
@@ -42,15 +42,15 @@ def revise_temp(score):
     bad drafts explore boldly, good drafts get more conservative edits so we
     don't re-roll a draft that's already working.
       score <= 2          -> 0.8  (explore a fundamentally different story)
-      2 < score < 5       -> linearly interpolate 0.8 -> 0.5
-      score >= 5          -> 0.5  (still allow a little variation)
-    e.g. 3 -> 0.70, 4 -> 0.60, 4.2 -> 0.58
+      2 < score < 5       -> linearly interpolate 0.8 -> 0.6
+      score >= 5          -> 0.6  (still allow a little variation)
+    e.g. 3 -> 0.73, 4 -> 0.67, 4.2 -> 0.65
     """
     if score <= 2:
         return 0.8
     if score >= 5:
-        return 0.5
-    return 0.5 + 0.3 * (5 - score) / 3
+        return 0.6
+    return 0.6 + 0.2 * (5 - score) / 3
 
 
 
