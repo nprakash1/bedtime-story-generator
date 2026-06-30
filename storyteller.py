@@ -52,10 +52,14 @@ Start with the title on its own line, use short read-aloud paragraphs, and end
 calmly to ease the child toward sleep."""
         )
 
-    def revise(self, feedback, scores=None):
+    def revise(self, feedback, scores=None, temperature=0.8):
         """Revise the latest draft. Because the whole conversation is in memory,
         the writer already sees every prior draft + note, so we instruct it to
-        KEEP what already scores well and only improve the weak area."""
+        KEEP what already scores well and only improve the weak area.
+
+        `temperature` is set by the caller via a quality-adaptive schedule:
+        low scores -> high temp (explore a bold rewrite), high scores -> low
+        temp (make a tiny, safe edit instead of re-rolling a good draft)."""
         focus = ""
         numeric = {k: v for k, v in (scores or {}).items() if isinstance(v, (int, float))}
         if numeric:
@@ -74,7 +78,8 @@ what's needed.
 
 Editor notes: {feedback}{focus}
 
-Return only the improved story (title + body)."""
+Return only the improved story (title + body).""",
+            temperature=temperature,
         )
 
     def apply_user_request(self, note):

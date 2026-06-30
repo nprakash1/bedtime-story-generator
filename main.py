@@ -34,7 +34,24 @@ from storyteller import Storyteller
 from judge import judge
 
 PASS_THRESHOLD = 4.3     # avg rubric score (out of 5) needed to ship
-MAX_ITERATIONS = 3       # storyteller drafts before returning the best effort
+MAX_ITERATIONS = 10       # storyteller drafts before returning the best effort
+
+
+def revise_temp(score):
+    """Quality-adaptive revision temperature (like simulated annealing):
+    bad drafts explore boldly, good drafts get tiny conservative edits so we
+    don't re-roll a draft that's already working.
+      score <= 2          -> 0.8  (explore a fundamentally different story)
+      2 < score < 5       -> linearly interpolate 0.8 -> 0.0
+      score >= 5          -> 0.0  (perfect; don't touch it)
+    e.g. 3 -> 0.53, 4 -> 0.27, 4.2 -> 0.21
+    """
+    if score <= 2:
+        return 0.8
+    if score >= 5:
+        return 0.0
+    return 0.8 * (5 - score) / 3
+
 
 
 def generate_story(request, writer):
@@ -55,8 +72,9 @@ def generate_story(request, writer):
         if is_safe and score >= PASS_THRESHOLD:
             break
         if i < MAX_ITERATIONS:
-            print("  revising with judge feedback...")
-            story = writer.revise(feedback, scores)  # writer sees full history
+            t = revise_temp(score)   # good draft -> low temp (don't gamble it)
+            print(f"  revising with judge feedback... (temp {t:.2f})")
+            story = writer.revise(feedback, scores, temperature=t)
 
     return best_story, best_score
 
