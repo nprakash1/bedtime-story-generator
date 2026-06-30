@@ -32,10 +32,16 @@ STORY:
 
 Also flag any unsafe content for young children.
 
+FEEDBACK RULE: If ANY dimension scores below 5, you MUST give 2-3 specific,
+actionable suggestions that target the lowest-scoring dimension(s) so the writer
+can raise those scores. Return "N/A" for feedback ONLY if every dimension is
+exactly 5.
+
 Return JSON (use these exact keys):
 {{"scores": {{"age_fit": 0, "safety": 0, "arc": 0, "engagement": 0, "length": 0}},
   "is_safe": true,
-  "feedback": "2-3 specific, actionable suggestions, related to the score categories,for the writer to improve the story's scores if less than 5"}}""",
+  "feedback": "2-3 specific, actionable suggestions targeting the lowest dimension(s), or \\"N/A\\" only if all dimensions are 5"}}""",
+
         temperature=0,
     )
     scores = data.get("scores", {}) or {}
@@ -52,4 +58,16 @@ Return JSON (use these exact keys):
     else:
         is_safe = bool(data.get("is_safe", True))
 
-    return overall, is_safe, data.get("feedback", ""), scores
+    # Belt-and-suspenders: even with the explicit FEEDBACK RULE above, the model
+    # sometimes returns empty/"N/A" feedback while a dimension is still < 5. In
+    # that case, synthesize actionable feedback that names the weakest
+    # dimension(s) so the reviser always has something concrete to act on.
+    feedback = (data.get("feedback") or "").strip()
+    below = {k: v for k, v in scores.items()
+             if isinstance(v, (int, float)) and v < 5}
+    if below and feedback.lower() in ("", "n/a", "na", "none"):
+        weakest = ", ".join(f"{k} ({v}/5)" for k, v in sorted(below.items(),
+                                                              key=lambda kv: kv[1]))
+        feedback = f"Improve the weakest dimension(s): {weakest}."
+
+    return overall, is_safe, feedback, scores

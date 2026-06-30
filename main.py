@@ -9,10 +9,6 @@ Pipeline:  Classifier -> Storyteller -> Judge -> (Reviser loop) -> Final story
                               times, then re-judge. Return the best safe draft.
     Then the USER can request changes, which re-runs the reviser + judge.
 
-    The Storyteller is STATEFUL (remembers every draft + note across the loop and
-    the user-feedback turns), so it won't undo earlier fixes. The judge stays
-    STATELESS so each draft is scored objectively, with no anchoring bias.
-
 Run:
     export OPENAI_API_KEY=sk-...      
     python main.py
@@ -20,9 +16,15 @@ Run:
 
 ------------------------------------------------------------------------------
 WHAT I'D BUILD NEXT (with 2 more hours):
-  - A small eval harness to score prompt variants on sample requests (a
-    regression test for prompt tweaks), and lightweight memory so recurring
-    characters / the child's name persist across sessions.
+  1. A small eval harness that runs a fixed set of 10-15 sample requests per each of the 5 categories, ensuring that a thresholded score is achieved 
+     within a configurable number of drafts. Re-running the harness after any model changes ensures that the quality is maintained.
+
+  2. A lightweight cross-session memory for episodic "series" storytelling. Persist a small JSON "character  
+     bible" to disk that stores the child's name (asked once, then reused) and a name-keyed
+     dictionary of recurring characters and settings with fixed traits. Each story
+     injects the relevant entries as fixed canon and appends any new characters
+     afterward without overwriting established ones.
+
 ------------------------------------------------------------------------------
 """
 
