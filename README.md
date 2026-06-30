@@ -5,6 +5,11 @@ using an **LLM judge** in a tight feedback loop. One module per section:
 `classifier.py`, `storyteller.py` (+ reviser), `judge.py`, shared `llm.py`
 helpers, and `main.py` (orchestration + user feedback).
 
+The **Storyteller is stateful** — it keeps a conversation thread, so it remembers
+every prior draft and note and won't undo earlier fixes (e.g. it won't make a
+story unsafe again after fixing it). The **Judge is stateless** — it scores each
+draft fresh so it can't be biased/anchored by the writer's framing.
+
 ### Block diagram
 
 ```

@@ -3,11 +3,15 @@ Bedtime Story Generator (Hippocratic AI take-home) — orchestration.
 
 Pipeline:  Classifier -> Storyteller -> Judge -> (Reviser loop) -> Final story
 
-    classifier.classify  -> storyteller.tell -> judge.judge
+    classifier.classify  -> Storyteller.tell -> judge.judge
       -> score >= threshold ? ship it
-                            : storyteller.revise(judge feedback), loop up to N
+                            : Storyteller.revise(judge feedback), loop up to N
                               times, then re-judge. Return the best safe draft.
     Then the USER can request changes, which re-runs the reviser + judge.
+
+    The Storyteller is STATEFUL (remembers every draft + note across the loop and
+    the user-feedback turns), so it won't undo earlier fixes. The judge stays
+    STATELESS so each draft is scored objectively, with no anchoring bias.
 
 Run:
     export OPENAI_API_KEY=sk-...      # your own key; never commit it
@@ -26,21 +30,21 @@ import os
 import sys
 
 from classifier import classify
-from storyteller import tell, revise
+from storyteller import Storyteller
 from judge import judge
 
 PASS_THRESHOLD = 4.3     # avg rubric score (out of 5) needed to ship
 MAX_ITERATIONS = 3       # storyteller drafts before returning the best effort
 
 
-def generate_story(request):
+def generate_story(request, writer):
     category = classify(request)
     print(f"  category: {category}")
-    story = tell(request, category)
+    story = writer.tell(request, category)   # first draft (writer remembers it)
 
     best_story, best_score, best_safe = story, 0.0, False
     for i in range(1, MAX_ITERATIONS + 1):
-        score, is_safe, feedback, scores = judge(request, story)
+        score, is_safe, feedback, scores = judge(request, story)  # stateless judge
         print(f"  draft {i}: score {score}/5  safe={is_safe}  {scores}")
         if feedback:
             print(f"    judge feedback: {feedback}")
@@ -52,7 +56,7 @@ def generate_story(request):
             break
         if i < MAX_ITERATIONS:
             print("  revising with judge feedback...")
-            story = revise(request, story, feedback, scores)
+            story = writer.revise(feedback, scores)  # writer sees full history
 
     return best_story, best_score
 
@@ -67,7 +71,8 @@ def main():
         return
 
     print("Building your story...")
-    story, score = generate_story(request)
+    writer = Storyteller()                 # one memory thread for this session
+    story, score = generate_story(request, writer)
     _show(story, score)
 
     # Let the user provide feedback / request changes (re-uses the reviser).
@@ -84,7 +89,7 @@ def main():
             print("\nSweet dreams! 🌙")
             break
         print("Revising with your request...")
-        story = revise(request, story, note)
+        story = writer.apply_user_request(note)  # same memory thread
         score, _, _, _ = judge(request, story)  # re-score the user-edited version
         _show(story, score)
 

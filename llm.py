@@ -12,17 +12,29 @@ import openai
 MODEL = "gpt-3.5-turbo"
 
 
-def call_model(prompt, system=None, temperature=0.7, json_mode=False):
-    """One chat completion -> text. json_mode nudges a strict-JSON reply."""
+def call_chat(messages, temperature=0.7):
+    """Send a full chat-history `messages` list -> assistant text.
+    This is the history-aware primitive: the storyteller passes its growing
+    conversation here so the model 'remembers' every prior draft and note.
+    """
     openai.api_key = os.getenv("OPENAI_API_KEY")
-    if json_mode:
-        prompt += "\n\nReply with ONLY valid JSON (no prose, no code fences)."
-    messages = ([{"role": "system", "content": system}] if system else []) + \
-               [{"role": "user", "content": prompt}]
     resp = openai.ChatCompletion.create(
         model=MODEL, messages=messages, temperature=temperature, max_tokens=1200,
     )
     return resp.choices[0].message["content"]  # type: ignore
+
+
+def call_model(prompt, system=None, temperature=0.7, json_mode=False):
+    """One stateless chat completion -> text (no memory between calls).
+    Used by the classifier and judge, which must score each input fresh.
+    json_mode nudges a strict-JSON reply.
+    """
+    if json_mode:
+        prompt += "\n\nReply with ONLY valid JSON (no prose, no code fences)."
+    messages = ([{"role": "system", "content": system}] if system else []) + \
+               [{"role": "user", "content": prompt}]
+    return call_chat(messages, temperature=temperature)
+
 
 
 def call_json(prompt, **kw):
