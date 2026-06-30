@@ -1,6 +1,4 @@
 """
-Bedtime Story Generator (Hippocratic AI take-home) — orchestration.
-
 Pipeline:  Classifier -> Storyteller -> Judge -> (Reviser loop) -> Final story
 
     classifier.classify  -> Storyteller.tell -> judge.judge
