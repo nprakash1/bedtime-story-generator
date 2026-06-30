@@ -1,14 +1,10 @@
 # Bedtime Story Generator — Solution
 
 Turns any simple request into a safe, age-appropriate (ages 5–10) bedtime story
-using an **LLM judge** in a tight feedback loop. One module per section:
-`classifier.py`, `storyteller.py` (+ reviser), `judge.py`, shared `llm.py`
-helpers, and `main.py` (orchestration + user feedback).
-
-The **Storyteller is stateful** — it keeps a conversation thread, so it remembers
-every prior draft and note and won't undo earlier fixes (e.g. it won't make a
-story unsafe again after fixing it). The **Judge is stateless** — it scores each
-draft fresh so it can't be biased/anchored by the writer's framing.
+using a multi-agent loop: a **classifier** picks a generation strategy, a
+**storyteller** writes the story, and an **LLM judge** scores it and feeds notes
+back for revision until it clears a quality bar. The user can then request
+further changes interactively.
 
 ### Block diagram
 
@@ -22,25 +18,64 @@ draft fresh so it can't be biased/anchored by the writer's framing.
                  │
                  ▼
         ┌─────────────────┐
-        │ 2. Storyteller  │  → generates story using a category-tailored
-        └─────────────────┘     prompt + story-arc structure
-                 │
+        │ 2. Storyteller  │  → writes story from a category-tailored
+        │   (STATEFUL)    │     prompt + story-arc structure
+        └─────────────────┘
+                 │  draft
                  ▼
         ┌─────────────────┐
-        │    3. Judge     │  → scores rubric (age-fit, safety, arc,
-        └─────────────────┘     engagement, length) → JSON + feedback
+        │    3. Judge     │  → scores rubric (age_fit, safety, arc,
+        │   (STATELESS)   │     engagement, length) → JSON + feedback
+        └─────────────────┘
                  │
-                 ├── score ≥ threshold ──► ✅ Final story → User
-                 │                              │
-                 │                              ▼
-                 │                    5. User feedback? ("make it shorter",
-                 │                       "add a dragon") ──► Reviser ──► Judge
+                 ├── score ≥ threshold ──► ✅ best safe draft → User
+                 │                                   │
+                 │                                   ▼
+                 │                         5. User feedback? ("make it
+                 │                            shorter", "add a dragon")
+                 │                            ──► Storyteller ──► Judge
                  │
-                 └── score < threshold ──► 4. Reviser (feeds judge notes
-                                              back to storyteller, loops
-                                              up to N times) ──► back to Judge
+                 └── score < threshold ──► 4. Reviser = Storyteller.revise()
+                                              feeds judge notes + score
+                                              breakdown back, loops up to
+                                              N times ──► back to Judge
 ```
 
+### Key design: writer remembers, judge forgets
+
+```
+  Storyteller (STATEFUL) ── remembers every draft + note ──┐
+        │  writes / revises / applies user edits            │  (one growing
+        ▼                                                    │   conversation
+     Judge (STATELESS) ── scores each draft fresh, no bias ──┘   thread)
+```
+
+- **Storyteller is stateful.** It keeps one conversation thread per session
+  (`Storyteller.messages`), so it remembers every prior draft and note. This
+  stops the "whack-a-mole" regression where a later revision reintroduces a
+  problem it already fixed (e.g. making a story unsafe again). The revise prompt
+  also explicitly says *keep what already works — never lower safety or
+  reintroduce conflict*.
+- **Judge is stateless.** It scores each draft from scratch with no history, so
+  it can't be anchored/biased by earlier scores or the writer's framing.
+
+### How it works
+
+1. **Classifier** (`classifier.py`) — labels the request as one of five
+   categories and selects a tailored generation strategy for each.
+2. **Storyteller** (`storyteller.py`) — a stateful agent that writes the first
+   draft, revises against judge feedback, and applies free-form user edits, all
+   on the same memory thread.
+3. **Judge** (`judge.py`) — a strict editor that scores 1–5 on a defined rubric
+   (`age_fit, safety, arc, engagement, length`) and returns actionable feedback
+   as JSON. Safety is gated on the numeric `safety` score for reliability.
+4. **Orchestrator** (`main.py`) — runs classify → tell → judge, then loops
+   revise → judge up to `MAX_ITERATIONS`, shipping early once the average score
+   clears `PASS_THRESHOLD` (4.3). It always returns the **best safe draft** seen,
+   then opens an interactive loop for user change requests.
+5. **Shared LLM helpers** (`llm.py`) — `call_chat()` (history-aware, for the
+   stateful writer) plus `call_model()`/`call_json()` (one-shot, for the
+   stateless classifier and judge). Model fixed to `gpt-3.5-turbo`.
 
 ### Run it
 ```bash
@@ -51,9 +86,10 @@ python main.py                                # interactive
 python main.py "a brave little turtle"        # one-shot
 ```
 
-> Model is fixed to `gpt-3.5-turbo`; the key is read from `OPENAI_API_KEY`.
-> The judge scores every draft 1–5 across a rubric and feeds actionable notes
-> back to the storyteller until the story clears the bar (or hits the loop cap).
+> Model is fixed to `gpt-3.5-turbo`; the key is read from `OPENAI_API_KEY`
+> (never hardcoded). Each draft is scored 1–5 across the rubric and the notes
+> are fed back to the storyteller until the story clears the bar (or hits the
+> loop cap), after which the best safe draft is returned.
 
 ---
 
