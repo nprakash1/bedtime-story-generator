@@ -97,7 +97,7 @@ python main.py "a brave little turtle"        # one-shot
 Revisions don't use a fixed temperature — the reviser's sampling temperature is
 set by the judge's score, so the model explores when a draft is weak and edits
 conservatively when it's already good. This prevents a strong draft from being
-"re-rolled" into a worse one (a real regression we observed):
+"re-rolled" into a worse one (a real regression I observed):
 
 - **score ≤ 2** → `0.8` (explore a fundamentally different story)
 - **2 < score < 5** → linearly interpolated `0.8 → 0.6`
