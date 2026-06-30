@@ -71,8 +71,9 @@ further changes interactively.
    as JSON. Safety is gated on the numeric `safety` score for reliability.
 4. **Orchestrator** (`main.py`) — runs classify → tell → judge, then loops
    revise → judge up to `MAX_ITERATIONS`, shipping early once the average score
-   clears `PASS_THRESHOLD` (4.3). It always returns the **best safe draft** seen,
-   then opens an interactive loop for user change requests.
+   clears `PASS_THRESHOLD`. Revisions use a **quality-adaptive temperature**
+   (see below). It always returns the **best safe draft** seen, then opens an
+   interactive loop for user change requests.
 5. **Shared LLM helpers** (`llm.py`) — `call_chat()` (history-aware, for the
    stateful writer) plus `call_model()`/`call_json()` (one-shot, for the
    stateless classifier and judge). Model fixed to `gpt-3.5-turbo`.
@@ -90,6 +91,33 @@ python main.py "a brave little turtle"        # one-shot
 > (never hardcoded). Each draft is scored 1–5 across the rubric and the notes
 > are fed back to the storyteller until the story clears the bar (or hits the
 > loop cap), after which the best safe draft is returned.
+
+### Quality-adaptive revision temperature
+
+Revisions don't use a fixed temperature — the reviser's sampling temperature is
+set by the judge's score, so the model explores when a draft is weak and edits
+conservatively when it's already good. This prevents a strong draft from being
+"re-rolled" into a worse one (a real regression we observed):
+
+- **score ≤ 2** → `0.8` (explore a fundamentally different story)
+- **2 < score < 5** → linearly interpolated `0.8 → 0.6`
+- **score ≥ 5** → `0.6` (still allow a little variation)
+
+The first draft stays creative; only the targeted revisions are dampened. It's
+the same idea as simulated annealing: cool down as you approach a good solution.
+
+### What I'd build next (with 2 more hours)
+
+1. A small eval harness that runs a fixed set of 10–15 sample requests per each of
+   the 5 categories, ensuring that a thresholded score is achieved within a
+   configurable number of drafts. Re-running the harness after any model changes
+   ensures that the quality is maintained.
+
+2. A lightweight cross-session memory for episodic "series" storytelling. Persist
+   a small JSON "character bible" to disk that stores the child's name (asked once,
+   then reused) and a name-keyed dictionary of recurring characters and settings
+   with fixed traits. Each story injects the relevant entries as fixed canon and
+   appends any new characters afterward without overwriting established ones.
 
 ---
 

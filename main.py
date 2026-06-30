@@ -9,20 +9,22 @@ Pipeline:  Classifier -> Storyteller -> Judge -> (Reviser loop) -> Final story
                               times, then re-judge. Return the best safe draft.
     Then the USER can request changes, which re-runs the reviser + judge.
 
-    The Storyteller is STATEFUL (remembers every draft + note across the loop and
-    the user-feedback turns), so it won't undo earlier fixes. The judge stays
-    STATELESS so each draft is scored objectively, with no anchoring bias.
-
 Run:
-    export OPENAI_API_KEY=sk-...      # your own key; never commit it
+    export OPENAI_API_KEY=sk-...      
     python main.py
     python main.py "a brave little turtle who is afraid of the water"
 
 ------------------------------------------------------------------------------
 WHAT I'D BUILD NEXT (with 2 more hours):
-  - A small eval harness to score prompt variants on sample requests (a
-    regression test for prompt tweaks), and lightweight memory so recurring
-    characters / the child's name persist across sessions.
+  1. A small eval harness that runs a fixed set of 10-15 sample requests per each of the 5 categories, ensuring that a thresholded score is achieved 
+     within a configurable number of drafts. Re-running the harness after any model changes ensures that the quality is maintained.
+
+  2. A lightweight cross-session memory for episodic "series" storytelling. Persist a small JSON "character  
+     bible" to disk that stores the child's name (asked once, then reused) and a name-keyed
+     dictionary of recurring characters and settings with fixed traits. Each story
+     injects the relevant entries as fixed canon and appends any new characters
+     afterward without overwriting established ones.
+
 ------------------------------------------------------------------------------
 """
 
@@ -33,8 +35,25 @@ from classifier import classify
 from storyteller import Storyteller
 from judge import judge
 
-PASS_THRESHOLD = 4.3     # avg rubric score (out of 5) needed to ship
-MAX_ITERATIONS = 3       # storyteller drafts before returning the best effort
+PASS_THRESHOLD = 5.0     # avg rubric score (out of 5) needed to ship
+MAX_ITERATIONS = 10       # storyteller drafts before returning the best effort
+
+
+def revise_temp(score):
+    """Quality-adaptive revision temperature (like simulated annealing):
+    bad drafts explore boldly, good drafts get more conservative edits so we
+    don't re-roll a draft that's already working.
+      score <= 2          -> 0.8  (explore a fundamentally different story)
+      2 < score < 5       -> linearly interpolate 0.8 -> 0.6
+      score >= 5          -> 0.6  (still allow a little variation)
+    e.g. 3 -> 0.73, 4 -> 0.67, 4.2 -> 0.65
+    """
+    if score <= 2:
+        return 0.8
+    if score >= 5:
+        return 0.6
+    return 0.6 + 0.2 * (5 - score) / 3
+
 
 
 def generate_story(request, writer):
@@ -55,8 +74,9 @@ def generate_story(request, writer):
         if is_safe and score >= PASS_THRESHOLD:
             break
         if i < MAX_ITERATIONS:
-            print("  revising with judge feedback...")
-            story = writer.revise(feedback, scores)  # writer sees full history
+            t = revise_temp(score)   # good draft -> low temp (don't gamble it)
+            print(f"  revising with judge feedback... (temp {t:.2f})")
+            story = writer.revise(feedback, scores, temperature=t)
 
     return best_story, best_score
 
