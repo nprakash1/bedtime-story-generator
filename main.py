@@ -14,7 +14,7 @@ Pipeline:  Classifier -> Storyteller -> Judge -> (Reviser loop) -> Final story
     STATELESS so each draft is scored objectively, with no anchoring bias.
 
 Run:
-    export OPENAI_API_KEY=sk-...      # your own key; never commit it
+    export OPENAI_API_KEY=sk-...      
     python main.py
     python main.py "a brave little turtle who is afraid of the water"
 
@@ -39,18 +39,18 @@ MAX_ITERATIONS = 10       # storyteller drafts before returning the best effort
 
 def revise_temp(score):
     """Quality-adaptive revision temperature (like simulated annealing):
-    bad drafts explore boldly, good drafts get tiny conservative edits so we
+    bad drafts explore boldly, good drafts get more conservative edits so we
     don't re-roll a draft that's already working.
       score <= 2          -> 0.8  (explore a fundamentally different story)
-      2 < score < 5       -> linearly interpolate 0.8 -> 0.0
-      score >= 5          -> 0.0  (perfect; don't touch it)
-    e.g. 3 -> 0.53, 4 -> 0.27, 4.2 -> 0.21
+      2 < score < 5       -> linearly interpolate 0.8 -> 0.5
+      score >= 5          -> 0.5  (still allow a little variation)
+    e.g. 3 -> 0.70, 4 -> 0.60, 4.2 -> 0.58
     """
     if score <= 2:
         return 0.8
     if score >= 5:
-        return 0.0
-    return 0.8 * (5 - score) / 3
+        return 0.5
+    return 0.5 + 0.3 * (5 - score) / 3
 
 
 
